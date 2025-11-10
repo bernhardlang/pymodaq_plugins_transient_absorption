@@ -20,10 +20,12 @@ WITH_BACKGROUND = 1
 DIFFERENCE      = 2
 TA              = 3
 
-CONTINUOUS = 0
-LINEAR     = 1
-LIN_LOG    = 2
-
+RECORD_DATA        = 0
+PREPARE_BACKGROUND = 1
+TAKE_BACKGROUND    = 2
+PREPARE_WHITLIGHT  = 3
+TAKE_WHITLIGHT     = 4
+PREPARE_NORMAL     = 5
 
 class TAApp(CustomApp):
 
@@ -121,12 +123,13 @@ class TAApp(CustomApp):
         self.detector.daq_type = 'DAQ1D'
         self.detector.detector = self.plugin
         self.detector.init_hardware()
-        shutter = self.settings.child('pump_shutter').value()
-        self.detector.settings.child('detector_settings',
-                                     'pump_open').setValue(shutter)
-        shutter = self.settings.child('probe_shutter').value()
-        self.detector.settings.child('detector_settings',
-                                     'probe_open').setValue(shutter)
+        
+        #shutter = self.settings.child('pump_shutter').value()
+        #self.detector.settings.child('detector_settings',
+        #                             'pump_open').setValue(shutter)
+        #shutter = self.settings.child('probe_shutter').value()
+        #self.detector.settings.child('detector_settings',
+        #                             'probe_open').setValue(shutter)
 
         self.mainwindow.set_shutdown_callback(self.quit_function)
         self.detector.grab_status.connect(self.mainwindow.disable_close)
@@ -211,9 +214,9 @@ class TAApp(CustomApp):
         if self.measurement_mode >= WITH_BACKGROUND:
             self.measurement_state = PREPARE_BACKGROUND
             self.detector.set_mode(IGNORE)
-            self.set_sĥutters(['pump': False, 'probe': False])
+            self.set_sĥutters({'pump': False, 'probe': False})
         else:
-            self.measurement_state = DISPLAY_DATA
+            self.measurement_state = RECORD_DATA
 
         self.acquiring = True
         self.detector.grab() # just go
@@ -272,11 +275,11 @@ class TAApp(CustomApp):
         changed = False
         if 'pump' in shutter_states:
             self.detector.settings.child('detector_settings', 'pump_open') \
-                setValue(shutter_states['pump'])
+                .setValue(shutter_states['pump'])
             changed = True
         if 'probe' in shutter_states:
             self.detector.settings.child('detector_settings', 'probe_open') \
-                setValue(shutter_states['pump'])
+                .setValue(shutter_states['pump'])
             changed = True
         if changed:
             QTimer.singleShot(100, self.shutter_ready)
@@ -296,7 +299,7 @@ class TAApp(CustomApp):
             return
         elif state == BACKGROUND_OK:
             self.measurement_state = PREPARE_NORMAL
-            self.set_sĥutters(['pump': True, 'probe': True])
+            self.set_sĥutters({'pump': True, 'probe': True})
             return
 
     def take_data(self, data: DataToExport):
@@ -312,11 +315,11 @@ class TAApp(CustomApp):
             self.lower_spectrum_viewer.show_data(dfp)
             return
 
-        if self.measurement_state == NORMAL:
+        if self.measurement_state == RECORD_DATA:
             data1D = data.get_data_from_dim('Data1D')
             ta_data = data1D[0]
             statistics_data = data1D[1]
-            whitelight_data = data1D[2]
+            #whitelight_data = data1D[2]
             dfp = DataFromPlugins(name='data', data=[ta_data[0], ta_data[1]],
                                   dim='Data1D', labels=['mean', 'current'])
             self.upper_spectrum_viewer.show_data(dfp)
@@ -324,10 +327,10 @@ class TAApp(CustomApp):
                                   data=[statistics_data[0], statistics_data[1]],
                                   dim='Data1D', labels=['error', 'rms'])
             self.lower_spectrum_viewer.show_data(dfp)
-            dfp = DataFromPlugins(name='whitelight',
-                                  data=[whitelight_data[0]], dim='Data1D',
-                                        labels=['reference'])
-            self.whitelight_spectrum_viewer.show_data(dfp)
+            #dfp = DataFromPlugins(name='whitelight',
+            #                      data=[whitelight_data[0]], dim='Data1D',
+            #                            labels=['reference'])
+            #self.whitelight_spectrum_viewer.show_data(dfp)
             return
 
     def write_spectrum(self, t1, t2, spectrum):
@@ -396,7 +399,7 @@ def main():
         else:
             raise RuntimeError("command line argument error")
     else:
-        plugin='Avantes'
+        plugin='Lscpcie'
 
     app = mkQApp(plugin)
     pyqtRemoveInputHook() # needed for using pdb inside the qt eventloop
