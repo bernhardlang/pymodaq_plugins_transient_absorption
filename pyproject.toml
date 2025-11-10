@@ -1,16 +1,16 @@
 [features]  # defines the plugin features contained into this plugin
-instruments = true
-extensions = false
+instruments = false
+extensions = true
 models = false
 h5exporters = false
 scanners = false
 
 [urls]
-package-url = 'https://github.com/bernhardlang/pymodaq_plugins_readspectro'
+package-url = 'https://github.com/bernhardlang/pymodaq_plugins_transient_absorption'
 
 [project]
-name = "pymodaq_plugins_readspectro"
-description = 'Plugin for reading spectrometers with line scan arrays'
+name = "pymodaq_plugins_transient_absorption"
+description = 'Plugin for reading transient absorption extension'
 dependencies = [
     "pymodaq>=5.0.4",
     "pymodaq_utils",

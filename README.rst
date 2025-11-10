@@ -1,5 +1,5 @@
-pymodaq_plugins_readspectro
-###########################
+pymodaq_plugins_transient_absorption
+####################################
 
 .. image:: https://img.shields.io/pypi/v/pymodaq_plugins_avantes.svg
    :target: https://pypi.org/project/pymodaq_plugins_avantes/
@@ -26,7 +26,7 @@ Authors
 Extension
 =========
 
-* **readspectro**: reading out spectrometers with line scan arrays
+* **transient_absorption**: Transient Absorption measurement
 
 Installation instructions
 =========================
