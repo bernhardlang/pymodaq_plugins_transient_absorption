@@ -13,6 +13,8 @@ from pymodaq_gui.utils.custom_app import CustomApp
 from pymodaq_gui.plotting.data_viewers.viewer1D import Viewer1D
 from pymodaq_gui.utils.dock import DockArea, Dock
 from pymodaq_gui.utils.main_window import MainWindow
+from pymodaq_plugins_stresing.daq_viewer_plugins.plugins_1D.daq_1Dviewer_Lscpcie\
+    import DAQ_1DViewer_Lscpcie
 
 
 RAW             = 0
@@ -26,6 +28,10 @@ TAKE_BACKGROUND    = 2
 PREPARE_WHITLIGHT  = 3
 TAKE_WHITLIGHT     = 4
 PREPARE_NORMAL     = 5
+
+IGNORE_DATA     = 1 # to plugin??
+TAKE_BACKGROUND = 2
+ACQUIRE_DATA    = 0
 
 class TAApp(CustomApp):
 
@@ -212,8 +218,8 @@ class TAApp(CustomApp):
             return
 
         if self.measurement_mode >= WITH_BACKGROUND:
+            print("preparing background")
             self.measurement_state = PREPARE_BACKGROUND
-            self.detector.set_mode(IGNORE)
             self.set_sĥutters({'pump': False, 'probe': False})
         else:
             self.measurement_state = RECORD_DATA
@@ -285,22 +291,26 @@ class TAApp(CustomApp):
             QTimer.singleShot(100, self.shutter_ready)
 
     def shutter_ready(self):
+        print("got shutter ready")
         if self.measurement_state == PREPARE_BACKGROUND:
-            self.measurement_mode = TAKE_BACKGROUND
-            self.detector.set_mode(TAKE_BACKGROUND)
+            self.measurement_state = TAKE_BACKGROUND
+            self.detector.mode = DAQ_1DViewer_Lscpcie.TAKE_BACKGROUND
         elif self.measurement_state == PREPARE_NORMAL:
-            self.measurement_mode = DISPLAY_DATA
-            self.detector.set_mode(NORMAL)
+            self.measurement_state = DISPLAY_DATA
+            self.detector.mode = DAQ_1DViewer_Lscpcie.BACKGROUND_SUBTRACTED
 
-    def detector_ready(self, state):
-        if state == BACKGROUND_FAILED:
-            QMessageBox.critical()
-            self.stop_acquiring()
-            return
-        elif state == BACKGROUND_OK:
-            self.measurement_state = PREPARE_NORMAL
-            self.set_sĥutters({'pump': True, 'probe': True})
-            return
+    def background_ready(self):
+        print("got background ready")
+        self.measurement_state = PREPARE_NORMAL
+        self.set_sĥutters({'pump': True, 'probe': True})
+
+    def background_failed(self):
+        QMessageBox.critical()
+        self.stop_acquiring()
+
+    def whitelight_ready(self):
+        self.measurement_state = PREPARE_NORMAL
+        self.set_sĥutters({'pump': True, 'probe': True})
 
     def take_data(self, data: DataToExport):
         if self.measurement_state == TAKE_BACKGROUND:
