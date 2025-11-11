@@ -3,7 +3,7 @@ import csv, time
 from qtpy.QtCore import QByteArray, QSettings, QTimer
 from qtpy.QtGui import QKeySequence
 from qtpy.QtWidgets import QMainWindow, QWidget, QApplication, QProgressBar, \
-    QFileDialog
+    QFileDialog, QLabel, QGridLayout, QVBoxLayout
 from pyqtgraph import GraphicsLayoutWidget, PlotDataItem, FillBetweenItem
 from pyqtgraph import PlotItem, PlotDataItem, ViewBox
 from pyqtgraph import GraphicsWidget, PlotWidget
@@ -14,7 +14,7 @@ from pymodaq_gui.plotting.data_viewers.viewer1D import Viewer1D
 from pymodaq_gui.utils.dock import DockArea, Dock
 from pymodaq_gui.utils.main_window import MainWindow
 from pymodaq_plugins_stresing.daq_viewer_plugins.plugins_1D.daq_1Dviewer_Lscpcie\
-    import DAQ_1DViewer_Lscpcie
+    import DAQ_1DViewer_Lscpcie, MeasurementState
 
 
 RAW             = 0
@@ -22,17 +22,39 @@ WITH_BACKGROUND = 1
 DIFFERENCE      = 2
 TA              = 3
 
-RECORD_DATA        = 0
-PREPARE_BACKGROUND = 1
-TAKE_BACKGROUND    = 2
-PREPARE_WHITLIGHT  = 3
-TAKE_WHITLIGHT     = 4
-PREPARE_NORMAL     = 5
 
 IGNORE_DATA     = 1 # to plugin??
 TAKE_BACKGROUND = 2
 ACQUIRE_DATA    = 0
 
+class StatusWidget(QWidget):
+
+    def __init__(self, parent=None):
+        QWidget.__init__(self, parent)
+
+        layout = QVBoxLayout()
+        grid = QGridLayout()
+        self.status_label, row = self.add_entry("state", grid, 0)
+        self.samples_label, row = self.add_entry("samples", grid, row, "0")
+        self.sig_back_scale_label, row = \
+            self.add_entry("signal background", grid, row, "1.0")
+        self.ref_back_scale_label, row = \
+            self.add_entry("reference background", grid, row, "1.0")
+
+        layout.addLayout(grid)
+        layout.addStretch()
+        self.setLayout(layout)
+
+    def add_entry(self, name, layout, row, text=None):
+        layout.addWidget(QLabel(name), row, 0)
+        entry = QLabel("" if text is None else text)
+        layout.addWidget(entry, row, 1)
+        return entry, row+1
+
+    def set_state(self, state):
+        self.status_label.setText(str(state))
+        
+        
 class TAApp(CustomApp):
 
     measurement_modes = { 'Raw': RAW, 'Background Subtracted': WITH_BACKGROUND,
@@ -92,6 +114,12 @@ class TAApp(CustomApp):
         self.dockarea.addDock(self.docks['settings'])
         self.docks['settings'].addWidget(self.settings_tree)
 
+        self.docks['stats'] = Dock('Stats')
+        self.dockarea.addDock(self.docks['stats'], 'bottom',
+                              self.docks['settings'])
+        self.status_widget = StatusWidget()
+        self.docks['stats'].addWidget(self.status_widget)
+    
         # main area with spectrum plot
         upper_spectrum_dock = Dock('Signal')
         self.docks['upper_spectrum'] = \
@@ -115,7 +143,7 @@ class TAApp(CustomApp):
         whitelight_dock = Dock('Whitelight')
         self.docks['whitelight'] = \
             self.dockarea.addDock(whitelight_dock, "bottom",
-                                  self.docks['settings'])
+                                  self.docks['stats'])
         whitelight_widget = QWidget()
         self.whitelight_viewer = Viewer1D(whitelight_widget)
         self.whitelight_viewer.toolbar.hide()
@@ -210,6 +238,13 @@ class TAApp(CustomApp):
     def show_detector(self, status):
         self.daq_viewer_area.setVisible(status)
 
+    def set_measurement_state(self, state):
+        self.measurement_state = state
+        import pdb
+        pdb.set_trace()
+        self.detector.set_state(state)
+        self.status_widget.set_state(state)
+        
     def start_acquiring(self):
         """Start acquisition"""
 
@@ -218,11 +253,10 @@ class TAApp(CustomApp):
             return
 
         if self.measurement_mode >= WITH_BACKGROUND:
-            print("preparing background")
-            self.measurement_state = PREPARE_BACKGROUND
+            self.set_measurement_state(MeasurementState.PREPARE_BACKGROUND)
             self.set_sĥutters({'pump': False, 'probe': False})
         else:
-            self.measurement_state = RECORD_DATA
+            self.set_measurement_state(MeasurementState.RECORD_RAW_DATA)
 
         self.acquiring = True
         self.detector.grab() # just go
@@ -292,12 +326,10 @@ class TAApp(CustomApp):
 
     def shutter_ready(self):
         print("got shutter ready")
-        if self.measurement_state == PREPARE_BACKGROUND:
-            self.measurement_state = TAKE_BACKGROUND
-            self.detector.mode = DAQ_1DViewer_Lscpcie.TAKE_BACKGROUND
-        elif self.measurement_state == PREPARE_NORMAL:
-            self.measurement_state = DISPLAY_DATA
-            self.detector.mode = DAQ_1DViewer_Lscpcie.BACKGROUND_SUBTRACTED
+        if self.measurement_state == MeasurementState.PREPARE_BACKGROUND:
+            self.set_measurement_state(MeasurementState.TAKE_BACKGROUND)
+        elif self.measurement_state == MeasurementState.PREPARE_NORMAL:
+            self.set_measurement_state(MeasurementState.BACKGROUND_SUBTRACTED)
 
     def background_ready(self):
         print("got background ready")
@@ -313,7 +345,7 @@ class TAApp(CustomApp):
         self.set_sĥutters({'pump': True, 'probe': True})
 
     def take_data(self, data: DataToExport):
-        if self.measurement_state == TAKE_BACKGROUND:
+        if self.measurement_state == MeasurementState.TAKE_BACKGROUND:
             data1D = data.get_data_from_dim('Data1D')
             mean_data = data1D[0]
             rms_data = data1D[1]
@@ -323,9 +355,11 @@ class TAApp(CustomApp):
             dfp = DataFromPlugins(name='rms', data=[rms_data[0], rms_data[1]],
                                   dim='Data1D', labels=['signal', 'reference'])
             self.lower_spectrum_viewer.show_data(dfp)
+            QApplication.processEvents()
             return
 
-        if self.measurement_state == RECORD_DATA:
+        if self.measurement_state == MeasurementState.RECORD_RAW_DATA \
+           or self.measurement_state == MeasurementState.BACKGROUND_SUBTRACTED:
             data1D = data.get_data_from_dim('Data1D')
             ta_data = data1D[0]
             statistics_data = data1D[1]
@@ -363,6 +397,7 @@ class TAApp(CustomApp):
 
     def stop_acquiring(self):
         self.acquiring = False
+        self.set_measurement_state(MeasurementState.IDLE)
         self.detector.stop_grab()
 
     def save_current_data(self):
