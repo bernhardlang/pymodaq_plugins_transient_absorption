@@ -15,6 +15,7 @@ from pymodaq_gui.utils.dock import DockArea, Dock
 from pymodaq_gui.utils.main_window import MainWindow
 from pymodaq_plugins_stresing.daq_viewer_plugins.plugins_1D.daq_1Dviewer_Lscpcie\
     import DAQ_1DViewer_Lscpcie, MeasurementState
+from pymodaq_plugins_stresing.averager import Averager
 
 
 RAW             = 0
@@ -54,7 +55,14 @@ class StatusWidget(QWidget):
     def set_state(self, state):
         self.status_label.setText(str(state))
         
-        
+    def set_samples(self, samples):
+        self.samples_label.setText(str(samples))
+
+    def set_scaling(self, signal, reference):
+        self.sig_back_scale_label.setText(str(signal))
+        self.ref_back_scale_label.setText(str(reference))
+
+
 class TAApp(CustomApp):
 
     measurement_modes = { 'Raw': RAW, 'Background Subtracted': WITH_BACKGROUND,
@@ -99,7 +107,7 @@ class TAApp(CustomApp):
             self._settings_tree.widget.header().resizeSection(0, int(header))
 
         self.measurement_mode = RAW
-        self.have_background = False
+        self.measurement_state = MeasurementState.IDLE
         self.acquiring = False
         self.adjust_actions()
         self.adjust_parameters()
@@ -167,7 +175,7 @@ class TAApp(CustomApp):
 
         self.mainwindow.set_shutdown_callback(self.quit_function)
         self.detector.grab_status.connect(self.mainwindow.disable_close)
-        
+
     def setup_actions(self):
         self.add_action('acquire', 'Acquire', 'spectrumAnalyzer',
                         "Acquire", checkable=False, toolbar=self.toolbar)
@@ -214,9 +222,7 @@ class TAApp(CustomApp):
 
     def adjust_operation(self):
         """Stop acquisition if background / reference is missing but needed"""
-        if self.measurement_mode >= WITH_BACKGROUND:
-            if not self.have_background:
-                pass
+        pass
 
     def adjust_actions(self):
         """Disable actions which need other actions to be performed first.
@@ -240,9 +246,8 @@ class TAApp(CustomApp):
 
     def set_measurement_state(self, state):
         self.measurement_state = state
-        import pdb
-        pdb.set_trace()
-        self.detector.set_state(state)
+        self.detector.settings.child('detector_settings', 'measurement_state')\
+                              .setValue(state.value)
         self.status_widget.set_state(state)
         
     def start_acquiring(self):
@@ -328,13 +333,8 @@ class TAApp(CustomApp):
         print("got shutter ready")
         if self.measurement_state == MeasurementState.PREPARE_BACKGROUND:
             self.set_measurement_state(MeasurementState.TAKE_BACKGROUND)
-        elif self.measurement_state == MeasurementState.PREPARE_NORMAL:
+        elif self.measurement_state == MeasurementState.PREPARE_TA:
             self.set_measurement_state(MeasurementState.BACKGROUND_SUBTRACTED)
-
-    def background_ready(self):
-        print("got background ready")
-        self.measurement_state = PREPARE_NORMAL
-        self.set_sĥutters({'pump': True, 'probe': True})
 
     def background_failed(self):
         QMessageBox.critical()
@@ -345,36 +345,39 @@ class TAApp(CustomApp):
         self.set_sĥutters({'pump': True, 'probe': True})
 
     def take_data(self, data: DataToExport):
+        samples = data.get_data_from_name('samples')[0][0]
+        self.status_widget.set_samples(samples)
+        scalings = data.get_data_from_name('scalings')
+        if scalings is not None:
+            self.status_widget.set_scaling(scalings[0][0], scalings[1][0])
+
         if self.measurement_state == MeasurementState.TAKE_BACKGROUND:
-            data1D = data.get_data_from_dim('Data1D')
-            mean_data = data1D[0]
-            rms_data = data1D[1]
-            dfp = DataFromPlugins(name='mean', data=[mean_data[0], mean_data[1]],
-                                  dim='Data1D', labels=['signal', 'reference'])
-            self.upper_spectrum_viewer.show_data(dfp)
-            dfp = DataFromPlugins(name='rms', data=[rms_data[0], rms_data[1]],
-                                  dim='Data1D', labels=['signal', 'reference'])
-            self.lower_spectrum_viewer.show_data(dfp)
+            mean = data.get_data_from_name('mean')
+            self.upper_spectrum_viewer.show_data(mean)
+            rms = data.get_data_from_name('rms')
+            self.lower_spectrum_viewer.show_data(rms)
+
+            background = data.get_data_from_name('background')
+            if background is not None:
+                self.whitelight_viewer.show_data(background)
+                print("got background ready")
+                self.set_measurement_state(MeasurementState.PREPARE_TA)
+                self.set_sĥutters({'pump': True, 'probe': True})
+
             QApplication.processEvents()
             return
 
         if self.measurement_state == MeasurementState.RECORD_RAW_DATA \
            or self.measurement_state == MeasurementState.BACKGROUND_SUBTRACTED:
-            data1D = data.get_data_from_dim('Data1D')
-            ta_data = data1D[0]
-            statistics_data = data1D[1]
-            #whitelight_data = data1D[2]
-            dfp = DataFromPlugins(name='data', data=[ta_data[0], ta_data[1]],
-                                  dim='Data1D', labels=['mean', 'current'])
-            self.upper_spectrum_viewer.show_data(dfp)
-            dfp = DataFromPlugins(name='stats',
-                                  data=[statistics_data[0], statistics_data[1]],
-                                  dim='Data1D', labels=['error', 'rms'])
-            self.lower_spectrum_viewer.show_data(dfp)
+            mean = data.get_data_from_name('mean')
+            self.upper_spectrum_viewer.show_data(mean)
+            rms = data.get_data_from_name('rms')
+            self.lower_spectrum_viewer.show_data(rms)
             #dfp = DataFromPlugins(name='whitelight',
             #                      data=[whitelight_data[0]], dim='Data1D',
             #                            labels=['reference'])
             #self.whitelight_spectrum_viewer.show_data(dfp)
+            QApplication.processEvents()
             return
 
     def write_spectrum(self, t1, t2, spectrum):
