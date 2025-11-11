@@ -334,7 +334,11 @@ class TAApp(CustomApp):
         if self.measurement_state == MeasurementState.PREPARE_BACKGROUND:
             self.set_measurement_state(MeasurementState.TAKE_BACKGROUND)
         elif self.measurement_state == MeasurementState.PREPARE_TA:
-            self.set_measurement_state(MeasurementState.BACKGROUND_SUBTRACTED)
+            new_node = MeasurementState.BACKGROUND_SUBTRACTED \
+                xxx
+                if self.measurement_mode == BACKGROUND_SUBTRACTED else \
+                   MeasurementState.DIFFERENCE
+            self.set_measurement_state(new_mode)
 
     def background_failed(self):
         QMessageBox.critical()
