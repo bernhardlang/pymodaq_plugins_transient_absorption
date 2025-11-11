@@ -18,10 +18,10 @@ from pymodaq_plugins_stresing.daq_viewer_plugins.plugins_1D.daq_1Dviewer_Lscpcie
 from pymodaq_plugins_stresing.averager import Averager
 
 
-RAW             = 0
-WITH_BACKGROUND = 1
-DIFFERENCE      = 2
-TA              = 3
+RAW                   = 0
+BACKGROUND_SUBTRACTED = 1
+DIFFERENCE            = 2
+TA                    = 3
 
 
 IGNORE_DATA     = 1 # to plugin??
@@ -65,7 +65,8 @@ class StatusWidget(QWidget):
 
 class TAApp(CustomApp):
 
-    measurement_modes = { 'Raw': RAW, 'Background Subtracted': WITH_BACKGROUND,
+    measurement_modes = { 'Raw': RAW,
+                          'Background Subtracted': BACKGROUND_SUBTRACTED,
                           'Difference': DIFFERENCE, 'Transient Absorption': TA }
 
     params = [{'name': 'averaging', 'title': 'Averaging',
@@ -257,7 +258,7 @@ class TAApp(CustomApp):
             self.stop_acquiring()
             return
 
-        if self.measurement_mode >= WITH_BACKGROUND:
+        if self.measurement_mode >= BACKGROUND_SUBTRACTED:
             self.set_measurement_state(MeasurementState.PREPARE_BACKGROUND)
             self.set_sĥutters({'pump': False, 'probe': False})
         else:
@@ -334,8 +335,7 @@ class TAApp(CustomApp):
         if self.measurement_state == MeasurementState.PREPARE_BACKGROUND:
             self.set_measurement_state(MeasurementState.TAKE_BACKGROUND)
         elif self.measurement_state == MeasurementState.PREPARE_TA:
-            new_node = MeasurementState.BACKGROUND_SUBTRACTED \
-                xxx
+            new_mode = MeasurementState.BACKGROUND_SUBTRACTED \
                 if self.measurement_mode == BACKGROUND_SUBTRACTED else \
                    MeasurementState.DIFFERENCE
             self.set_measurement_state(new_mode)
@@ -377,10 +377,14 @@ class TAApp(CustomApp):
             self.upper_spectrum_viewer.show_data(mean)
             rms = data.get_data_from_name('rms')
             self.lower_spectrum_viewer.show_data(rms)
-            #dfp = DataFromPlugins(name='whitelight',
-            #                      data=[whitelight_data[0]], dim='Data1D',
-            #                            labels=['reference'])
-            #self.whitelight_spectrum_viewer.show_data(dfp)
+            QApplication.processEvents()
+            return
+
+        if self.measurement_state == MeasurementState.DIFFERENCE:
+            mean = data.get_data_from_name('mean')
+            self.upper_spectrum_viewer.show_data(mean)
+            diff = data.get_data_from_name('difference')
+            self.lower_spectrum_viewer.show_data(diff)
             QApplication.processEvents()
             return
 
