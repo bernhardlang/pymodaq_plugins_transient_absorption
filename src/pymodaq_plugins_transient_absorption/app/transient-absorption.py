@@ -335,9 +335,12 @@ class TAApp(CustomApp):
         if self.measurement_state == MeasurementState.PREPARE_BACKGROUND:
             self.set_measurement_state(MeasurementState.TAKE_BACKGROUND)
         elif self.measurement_state == MeasurementState.PREPARE_TA:
-            new_mode = MeasurementState.BACKGROUND_SUBTRACTED \
-                if self.measurement_mode == BACKGROUND_SUBTRACTED else \
-                   MeasurementState.DIFFERENCE
+            if self.measurement_mode == BACKGROUND_SUBTRACTED:
+                new_mode = MeasurementState.BACKGROUND_SUBTRACTED
+            elif self.measurement_mode == DIFFERENCE:
+                new_mode = MeasurementState.DIFFERENCE
+            elif self.measurement_mode == TA:
+                new_mode = MeasurementState.TA_DATA
             self.set_measurement_state(new_mode)
 
     def background_failed(self):
@@ -385,6 +388,16 @@ class TAApp(CustomApp):
             self.upper_spectrum_viewer.show_data(mean)
             diff = data.get_data_from_name('difference')
             self.lower_spectrum_viewer.show_data(diff)
+            QApplication.processEvents()
+            return
+
+        if self.measurement_state == MeasurementState.TA_DATA:
+            ta = data.get_data_from_name('ta')
+            self.upper_spectrum_viewer.show_data(ta)
+            rms = data.get_data_from_name('rms')
+            self.lower_spectrum_viewer.show_data(rms)
+            whitelight = data.get_data_from_name('whitelight')
+            self.whitelight_viewer.show_data(whitelight)
             QApplication.processEvents()
             return
 
