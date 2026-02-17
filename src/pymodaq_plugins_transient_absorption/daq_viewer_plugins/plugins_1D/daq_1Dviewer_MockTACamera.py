@@ -6,7 +6,8 @@ from pymodaq_gui.parameter import Parameter
 from pymodaq.control_modules.viewer_utility_classes import DAQ_Viewer_base, \
     comon_parameters, main
 from pymodaq.utils.data import DataFromPlugins
-from pymadaq_plugins_transient_absorption.hardware.controller import MockTAContrller
+from pymadaq_plugins_transient_absorption.hardware.controller \
+    import MockTAContrller
 
 
 class DAQ_1DViewer_MockLineScanCam(DAQ_Viewer_base):
@@ -15,7 +16,8 @@ class DAQ_1DViewer_MockLineScanCam(DAQ_Viewer_base):
     """
     # first pixel, used pixels, first dark pixel, dark pixels
     params = comon_parameters+[
-        { 'title': 'Number of pixels', 'name': 'n_pixels', 'type': 'int', 'value': 574, },
+        { 'title': 'Number of pixels', 'name': 'n_pixels', 'type': 'int',
+          'value': 574, },
         { 'title': 'Number of acquisitions per block', 'name': 'acq_per_block',
           'type': 'int', 'min': 1, 'max': 250, 'value': 250 },
         { 'title': 'Number of blocks', 'name': 'n_blocks',
