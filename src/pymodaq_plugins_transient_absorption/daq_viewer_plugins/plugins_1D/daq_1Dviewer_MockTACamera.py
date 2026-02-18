@@ -26,10 +26,8 @@ class DAQ_1DViewer_MockTACamera(DAQ_Viewer_base):
           'type': 'int', 'min': 1, 'max': 100, 'value': 1 },
         { 'title': 'Trigger mode', 'name': 'trigger_mode', 'type': 'list',
           'limits': ["Free running", "S1", "S2", "S1&S2"], 'value': 'S1' },
-        { 'title': 'Average', 'name': 'average', 'type': 'bool',
-          'value': True },
         { 'title': 'Displayed scan', 'name': 'displayed_scan', 'type': 'int',
-          'min': -1, 'value': 0 },
+          'min': -1, 'value': -1 },
         ]
 
     live_mode_available = True
@@ -95,7 +93,7 @@ class DAQ_1DViewer_MockTACamera(DAQ_Viewer_base):
             if kwargs['live']:
                 self.live = True
                 self.acquisition_counter = 0
-                if self.settings['average']:
+                if self.settings['displayed_scan'] < 0:
                     callback = self.average_callback
                 else:
                     callback = self.single_callback
@@ -109,19 +107,18 @@ class DAQ_1DViewer_MockTACamera(DAQ_Viewer_base):
         self.controller.grab(self.callback)
 
     def single_callback(self, raw_data):
-        data_from = self.display_scan * self.n_pix + self.first_used_pix
-        data_to = self.display_scan * self.n_pix + self.last_used_pix
+        data_from = 2 * self.display_scan * self.n_pix
         data = [DataFromPlugins(name='camera %d' % i,
-                                data=raw_data[data_from:data_to], dim='Data1D',
-                                labels=['camera %d' % i], axes=[self.x_axis])
+                                data=raw_data[data_from + i * self.n_pix
+                                              :data_from + (i + 1) * self.n_pix],
+                                dim='Data1D', labels=['camera %d' % i],
+                                axes=[self.x_axis])
                 for i in range(2)]
         self.dte_signal.emit(DataToExport(name='eslscpcie', data=data))
 
     def average_callback(self, raw_data):
         sum_data = [np.zeros(self.n_pix) for _ in range(2)]
         squares_data = [np.zeros(self.n_pix) for _ in range(2)]
-        sum_dark = [0, 0]
-        squares_dark = [0, 0]
         valid_scans = \
             self.settings['acq_per_block'] - self.settings['clear_reads']
         src_pos = self.settings['clear_reads'] * self.n_pix * 2

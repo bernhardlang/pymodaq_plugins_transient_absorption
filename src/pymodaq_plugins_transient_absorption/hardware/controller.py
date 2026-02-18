@@ -65,37 +65,35 @@ class MockTACamera:
     def calculate_base_data(self):
         n_pix = self.n_pixels
         pixels = np.linspace(0, n_pix - 1, n_pix)
-        self.spectrum = np.exp(-((pixels - n_pix / 2) / (n_pix / 3))**4)
-        self.gsb = self.bleach * np.exp(-(n_pix / 4 / (n_pix / 8))**2)
-        self.esa = \
-            self.excited_state_absorption \
-            * np.exp(-((pixels - n_pix / 4) / (n_pix / 8))**2)
-        self.scatter = \
-            self.excitation_scatter * np.exp(-(n_pix / 8 / (n_pix / 8))**2)
+        self.whitelight = np.exp(-((pixels - n_pix / 2) / (n_pix / 3))**4)
+        self.gsb = np.exp(-((pixels - n_pix / 4) / (n_pix / 8))**2)
+        self.esa = np.exp(-((pixels - 3 * n_pix / 4) / (n_pix / 8))**2)
+        self.scatter = np.exp(-((pixels - n_pix / 4) / (n_pix / 16))**2)
 
     def calculate_scan(self, delay: float, polarizer_angle: float,
                        excitation: bool, probe: bool):
 
+        # dark
         signal_photo_electrons = \
             np.random.normal(loc=self.dark_signal, scale=self.rms_dark_signal,
                              size=self.n_pixels) \
             * self.photo_electrons_per_lsb
         reference_photo_electrons = \
-            np.random.normal(loc=self.dark_signal, scale=self.rms_dark_signal,
+            np.random.normal(loc=self.dark_reference, scale=self.rms_dark_signal,
                              size=self.n_pixels) \
             * self.photo_electrons_per_lsb
 
         if excitation:
+            # scatter
             signal_photo_electrons += \
                 self.excitation_scatter * \
-                np.random.normal(loc=1, scale=self.relative_rms_scatter,
-                                 size=self.n_pixels) \
-                * self.photo_electrons_per_lsb
+                np.random.normal(loc=1, scale=self.relative_rms_scatter) \
+                * self.scatter * self.photo_electrons_per_lsb
 
         if probe:
-            fluct = np.random.normal(loc=1, scale=self.relative_rms_signal)
-            signal = self.spectrum * self.signal * fluct
-            reference = self.spectrum * self.reference * fluct
+            fluct_I0 = np.random.normal(loc=1, scale=self.relative_rms_signal)
+            signal = self.whitelight * self.signal * fluct_I0
+            reference = self.whitelight * self.reference * fluct_I0
 
             if excitation:
                 time_factor = np.exp(-delay / self.life_time)
@@ -107,13 +105,14 @@ class MockTACamera:
                     + gsb_amplitude * (1 - 0.4 * anisotropy_factor) \
                     * np.sin(polarizer_angle)**2
 
-                esa_amplitude = -self.excited_state_absorption * time_factor
+                esa_amplitude = self.excited_state_absorption * time_factor
                 esa = esa_amplitude * (1 + 0.8 * anisotropy_factor) \
                     * np.cos(polarizer_angle - self.excited_state_angle)**2 \
                     + esa_amplitude * (1 - 0.4 * anisotropy_factor) \
                     * np.sin(polarizer_angle - self.excited_state_angle)**2
 
-                signal *= pow(10, -(bleach + esa))
+                absorption = bleach * self.gsb + esa * self.esa
+                signal *= np.power(10, -absorption)
 
             signal_photo_electrons += \
                 np.random.poisson(signal * self.photo_electrons_per_lsb)
@@ -136,16 +135,18 @@ class MockTACamera:
         n_pix = self.n_pixels
         data_size = self.n_pixels * 2 * self.scans_per_block
 
-        data = np.empty(data_size)
+        data = np.empty(data_size, dtype=np.uint16)
         dest = 0
         while dest < data_size:
             data[dest:dest+n_pix], data[dest+n_pix:dest+2*n_pix] = \
-                self.calculate_scan(delay, polarizer_angle, excitation, probe)
+                 self.calculate_scan(delay, polarizer_angle, excitation, probe)
             dest += 2 * n_pix
             data[dest:dest+n_pix], data[dest+n_pix:dest+2*n_pix] = \
                 self.calculate_scan(delay, polarizer_angle, False, probe)
             dest += 2 * n_pix
-            if dest >= data_size or not scatter:
+            if not scatter:
+                continue
+            if dest >= data_size:
                 break
             data[dest:dest+n_pix], data[dest+n_pix:dest+2*n_pix] = \
                 self.calculate_scan(delay, polarizer_angle, excitation, False)
@@ -214,3 +215,56 @@ class MockTAController:
         while not self._stop:
             data = self.grab_spectrum()
             self._callback(data)
+
+
+if __name__ == '__main__':
+    import matplotlib.pyplot as plt
+    camera = MockTACamera()
+
+    plt.plot(camera.whitelight)
+    plt.plot(camera.gsb)
+    plt.plot(camera.esa)
+    plt.plot(camera.scatter)
+    plt.legend(['whitelight', 'GSB', 'ESA', 'scatter'])
+    plt.show()
+    
+    sig_p, ref_p = camera.calculate_scan(delay=0, polarizer_angle=0,
+                                         excitation=True, probe=True)
+    plt.plot(sig_p)
+    plt.plot(ref_p)
+    plt.title('Pumped')
+    plt.show()
+
+    sig_0, ref_0 = camera.calculate_scan(delay=0, polarizer_angle=0,
+                                         excitation=False, probe=True)
+    plt.plot(sig_0)
+    plt.plot(ref_0)
+    plt.title('Unpumped')
+    plt.show()
+
+    sig_s, ref_s = camera.calculate_scan(delay=0, polarizer_angle=0,
+                                         excitation=True, probe=False)
+    plt.plot(sig_s)
+    plt.plot(ref_s)
+    plt.title('Scatter')
+    plt.show()
+
+    sig_d, ref_d = camera.calculate_scan(delay=0, polarizer_angle=0,
+                                         excitation=False, probe=False)
+    plt.plot(sig_d)
+    plt.plot(ref_d)
+    plt.title('Dark')
+    plt.show()
+
+    sig_p = sig_p - sig_d.astype(float)
+    sig_0 = sig_0 - sig_d.astype(float)
+    ref_p = ref_p - ref_d.astype(float)
+    ref_0 = ref_0 - ref_d.astype(float)
+    plt.plot(sig_p)
+    plt.plot(sig_0)
+    plt.show()
+    
+    ta = -np.log10((sig_p * ref_0) / (sig_0 * ref_p))
+    plt.plot(ta)
+    plt.title('TA')
+    plt.show()
