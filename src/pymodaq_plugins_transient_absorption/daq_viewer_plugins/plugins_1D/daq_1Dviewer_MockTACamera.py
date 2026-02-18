@@ -6,11 +6,11 @@ from pymodaq_gui.parameter import Parameter
 from pymodaq.control_modules.viewer_utility_classes import DAQ_Viewer_base, \
     comon_parameters, main
 from pymodaq.utils.data import DataFromPlugins
-from pymadaq_plugins_transient_absorption.hardware.controller \
-    import MockTAContrller
+from pymodaq_plugins_transient_absorption.hardware.controller \
+    import MockTAController
 
 
-class DAQ_1DViewer_MockLineScanCam(DAQ_Viewer_base):
+class DAQ_1DViewer_MockTACamera(DAQ_Viewer_base):
     """ Instrument plugin class for a Lscpcie 1D viewer.
     
     """
@@ -20,6 +20,8 @@ class DAQ_1DViewer_MockLineScanCam(DAQ_Viewer_base):
           'value': 574, },
         { 'title': 'Number of acquisitions per block', 'name': 'acq_per_block',
           'type': 'int', 'min': 1, 'max': 250, 'value': 250 },
+        { 'title': 'Clear reads', 'name': 'clear_reads',
+          'type': 'int', 'min': 0, 'max': 250, 'value': 4 },
         { 'title': 'Number of blocks', 'name': 'n_blocks',
           'type': 'int', 'min': 1, 'max': 100, 'value': 1 },
         { 'title': 'Trigger mode', 'name': 'trigger_mode', 'type': 'list',
@@ -66,11 +68,10 @@ class DAQ_1DViewer_MockLineScanCam(DAQ_Viewer_base):
 
         self.make_x_axis()
         data = [DataFromPlugins(name='camera %d' % i,
-                                data=[np.zeros(self.last_used_pix)
-                                      for _ in range(self.n_cam)],
+                                data=[np.zeros(self.n_pix) for _ in range(2)],
                                 dim='Data1D', labels=['camera %d' % i],
                                 axes=[self.x_axis])
-                for i in range(self.n_cam)]
+                for i in range(2)]
         self.dte_signal_temp.emit(DataToExport(name='mock_lsc', data=data))
 
         return "Mock Line Scan Camera plugin initialised", True
@@ -113,45 +114,36 @@ class DAQ_1DViewer_MockLineScanCam(DAQ_Viewer_base):
         data = [DataFromPlugins(name='camera %d' % i,
                                 data=raw_data[data_from:data_to], dim='Data1D',
                                 labels=['camera %d' % i], axes=[self.x_axis])
-                for i in range(self.n_cam)]
+                for i in range(2)]
         self.dte_signal.emit(DataToExport(name='eslscpcie', data=data))
 
     def average_callback(self, raw_data):
-        sum_data = [np.zeros(self.used_pix) for _ in range(self.n_cam)]
-        squares_data = [np.zeros(self.used_pix) for _ in range(self.n_cam)]
+        sum_data = [np.zeros(self.n_pix) for _ in range(2)]
+        squares_data = [np.zeros(self.n_pix) for _ in range(2)]
         sum_dark = [0, 0]
         squares_dark = [0, 0]
         valid_scans = \
             self.settings['acq_per_block'] - self.settings['clear_reads']
-        src_pos = self.settings['clear_reads'] * self.n_pix * self.n_cam \
-            + self.first_used_pix
-        dark_pos = self.settings['clear_reads'] * self.n_pix * self.n_cam \
-            + self.first_dark_pix
+        src_pos = self.settings['clear_reads'] * self.n_pix * 2
         for _ in range(valid_scans):
-            for i in range(self.n_cam):
+            for i in range(2):
                 raw = \
-                    raw_data[src_pos:src_pos + self.used_pix].astype(np.float64)
+                    raw_data[src_pos:src_pos + self.n_pix].astype(np.float64)
                 sum_data[i] += raw
                 squares_data[i] += raw**2
-                dark = \
-                    raw_data[dark_pos:dark_pos + self.dark_pix]\
-                        .astype(np.float64)
-                sum_dark[i] += sum(dark)
-                squares_dark[i] += sum(dark**2)
                 src_pos += self.n_pix
-                dark_pos += self.n_pix
 
         data = [DataFromPlugins(name='camera %d' % i,
                                 data=sum_data[i] / valid_scans, dim='Data1D',
                                 labels=['camera %d' % i], axes=[self.x_axis])
-                for i in range(self.n_cam)]
+                for i in range(2)]
         rms = [DataFromPlugins(name='rms %d' % i,
                                data=np.sqrt((valid_scans * squares_data[i]
                                              - sum_data[i]**2)
                                             / (valid_scans * (valid_scans - 1))),
                                dim='Data1D', labels=['rms %d' % i],
                                axes=[self.x_axis])
-                for i in range(self.n_cam)]
+                for i in range(2)]
         self.dte_signal.emit(DataToExport(name='mock lsc', data=data + rms))
 
     def stop(self):

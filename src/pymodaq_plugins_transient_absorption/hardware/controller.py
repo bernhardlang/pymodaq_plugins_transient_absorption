@@ -1,6 +1,6 @@
 import numpy as np
 from dataclasses import dataclass
-
+from threading import Thread
 
 class MockActuator:
 
@@ -42,8 +42,8 @@ class MockTACamera:
     signal: float = 30000
     relative_rms_signal: float = 0.05
     reference: float = 35000
-    dark_sig: float = 1000
-    rms_dark_sig: float = 5
+    dark_signal: float = 1000
+    rms_dark_signal: float = 5
     dark_reference: float = 1300
     rms_dark_reference: float = 4.5
     absorption: float = 0.01
@@ -57,6 +57,7 @@ class MockTACamera:
     parallel_polarizer: float = 10 / 180 * np.pi
     parallel_waveplate: float = 15 / 180 * np.pi
     laser_polarization: float = 2 / 180 * np.pi
+    scans_per_block: int = 250
 
     def __post_init__(self):
         self.calculate_base_data()
@@ -72,24 +73,24 @@ class MockTACamera:
         self.scatter = \
             self.excitation_scatter * np.exp(-(n_pix / 8 / (n_pix / 8))**2)
 
-    def calculate_scan(delay: float, polarizer_angle: float, excitation: bool,
-                       probe: bool):
+    def calculate_scan(self, delay: float, polarizer_angle: float,
+                       excitation: bool, probe: bool):
 
         signal_photo_electrons = \
             np.random.normal(loc=self.dark_signal, scale=self.rms_dark_signal,
                              size=self.n_pixels) \
-            * photo_electrons_per_lsb
+            * self.photo_electrons_per_lsb
         reference_photo_electrons = \
-            np.random.normal(loc=self.dark_sig, scale=self.rms_dark_sig,
+            np.random.normal(loc=self.dark_signal, scale=self.rms_dark_signal,
                              size=self.n_pixels) \
-            * photo_electrons_per_lsb
+            * self.photo_electrons_per_lsb
 
         if excitation:
             signal_photo_electrons += \
                 self.excitation_scatter * \
                 np.random.normal(loc=1, scale=self.relative_rms_scatter,
                                  size=self.n_pixels) \
-                * photo_electrons_per_lsb
+                * self.photo_electrons_per_lsb
 
         if probe:
             fluct = np.random.normal(loc=1, scale=self.relative_rms_signal)
@@ -115,12 +116,12 @@ class MockTACamera:
                 signal *= pow(10, -(bleach + esa))
 
             signal_photo_electrons += \
-                np.random.poisson(signal * photo_electrons_per_lsb)
+                np.random.poisson(signal * self.photo_electrons_per_lsb)
             reference_photo_electrons += \
-                np.random.poisson(reference * photo_electrons_per_lsb)
+                np.random.poisson(reference * self.photo_electrons_per_lsb)
 
-        signal = signal_photo_electrons / photo_electrons_per_lsb
-        reference = reference_photo_electrons / photo_electrons_per_lsb
+        signal = signal_photo_electrons / self.photo_electrons_per_lsb
+        reference = reference_photo_electrons / self.photo_electrons_per_lsb
         signal = np.where(signal < 0, 0, signal)
         reference = np.where(reference < 0, 0, reference)
         max_val = 2**self.adc_bits - 1
@@ -130,8 +131,8 @@ class MockTACamera:
             return signal.astype(np.uint16), reference.astype(np.uint16)
         return signal.astype(np.uint32), reference.astype(np.uint32)
 
-    def calculate_block(delay: float, polarizer_angle: float, excitation: bool,
-                        probe: bool, scatter: bool):
+    def calculate_block(self, delay: float, polarizer_angle: float,
+                        excitation: bool, probe: bool, scatter: bool):
         n_pix = self.n_pixels
         data_size = self.n_pixels * 2 * self.scans_per_block
 
@@ -139,18 +140,18 @@ class MockTACamera:
         dest = 0
         while dest < data_size:
             data[dest:dest+n_pix], data[dest+n_pix:dest+2*n_pix] = \
-                calculate_scan(delay, polarizer_angle, excitation, probe)
+                self.calculate_scan(delay, polarizer_angle, excitation, probe)
             dest += 2 * n_pix
             data[dest:dest+n_pix], data[dest+n_pix:dest+2*n_pix] = \
-                calculate_scan(delay, polarizer_angle, False, probe)
+                self.calculate_scan(delay, polarizer_angle, False, probe)
             dest += 2 * n_pix
             if dest >= data_size or not scatter:
                 break
             data[dest:dest+n_pix], data[dest+n_pix:dest+2*n_pix] = \
-                calculate_scan(delay, polarizer_angle, excitation, False)
+                self.calculate_scan(delay, polarizer_angle, excitation, False)
             dest += 2 * n_pix
             data[dest:dest+n_pix], data[dest+n_pix:dest+2*n_pix] = \
-                calculate_scan(delay, polarizer_angle, False, False)
+                self.calculate_scan(delay, polarizer_angle, False, False)
             dest += 2 * n_pix
 
         return data
@@ -212,4 +213,4 @@ class MockTAController:
     def grab_loop(self):
         while not self._stop:
             data = self.grab_spectrum()
-            self.callback(data)
+            self._callback(data)
