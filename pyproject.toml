@@ -1,7 +1,7 @@
 [features]  # defines the plugin features contained into this plugin
-instruments = false
-extensions = true
-models = false
+instruments = true
+extensions = false
+models = true
 h5exporters = false
 scanners = false
 
