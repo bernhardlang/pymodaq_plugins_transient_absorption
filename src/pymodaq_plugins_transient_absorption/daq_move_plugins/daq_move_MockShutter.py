@@ -17,14 +17,13 @@ class DAQ_Move_MockShutter(DAQ_Move_base):
 
     """
     is_multiaxes = True
-    _axis_names: Union[List[str], Dict[str, int]] = \
-        MockTAController.shutter_names
+    _axis_names = MockTAController.shutter_names[:2]
     _controller_units = '' #: Union[str, List[str]] = ['mm', 'mm']
     _epsilon = 0.1
     data_actuator_type = DataActuatorType.DataActuator
 
     params = [
-    ] + comon_parameters_fun(is_multiaxes, epsilon=_epsilon)
+    ] + comon_parameters_fun(is_multiaxes, _axis_names, epsilon=_epsilon)
 
     def ini_attributes(self):
         self.controller: MockTAController = None
@@ -37,7 +36,7 @@ class DAQ_Move_MockShutter(DAQ_Move_base):
         float: The position obtained after scaling conversion.
         """
         axis = self.settings['multiaxes', 'axis']
-        pos = DataActuator(data=self.controller.get_polarizer_value(axis),
+        pos = DataActuator(data=self.controller.get_shutter_value(axis),
                            units=self.axis_unit)
         pos = self.get_position_with_scaling(pos)
         return pos
@@ -91,7 +90,7 @@ class DAQ_Move_MockShutter(DAQ_Move_base):
         self.target_value = value
         value = self.set_position_with_scaling(value)
         axis = self.settings['multiaxes', 'axis']
-        self.controller.sep_polarizer_value(value.value(self.axis_unit), axis)
+        self.controller.set_shutter_value(value.value(self.axis_unit), axis)
         self.emit_status(ThreadCommand('Update_Status',
                                        ['Moved shutter %s' % axis]))
 

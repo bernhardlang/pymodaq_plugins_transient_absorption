@@ -175,20 +175,20 @@ class MockTAController:
     def get_polarizer_value(self, axis):
         return self.polarizers[axis].get_value()
 
-    def set_polarizer_value(self, axis, value):
-        self.polarizers[axis].set_value(value)
+    def set_polarizer_value(self, value, axis):
+        self.polarizers[axis].move_at(value)
 
     def get_delay_value(self):
         return self.delay_line.get_value()
 
     def set_delay_value(selfvalue):
-        self.delay_line.set_value(value)
+        self.delay_line.move_at(value)
 
     def get_shutter_value(self, shutter):
-        return self.shutters[axis].get_value()
+        return self.shutters[shutter].get_value()
 
-    def set_shutter_value(self, shutter, value):
-        self.shutters[axis].set_value(value)
+    def set_shutter_value(self, value, shutter):
+        self.shutters[shutter].move_at(value)
 
     def grab_spectrum(self):
         return self.camera\

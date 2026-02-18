@@ -17,13 +17,13 @@ class DAQ_Move_MockPolarizer(DAQ_Move_base):
 
     """
     is_multiaxes = True
-    _axis_names: Union[List[str], Dict[str, int]] = MockTAController.polarizer_names[:2]
+    _axis_names = MockTAController.polarizer_names[:2]
     _controller_units = 'deg' #['deg', 'deg']
     _epsilon = 0.1 #: Union[float, List[float]] = [0.1, 0.1]
     data_actuator_type = DataActuatorType.DataActuator
 
     params = [
-    ] + comon_parameters_fun(is_multiaxes, epsilon=_epsilon)
+    ] + comon_parameters_fun(is_multiaxes, _axis_names, epsilon=_epsilon)
 
     def ini_attributes(self):
         self.controller: MockTAController = None
@@ -90,8 +90,9 @@ class DAQ_Move_MockPolarizer(DAQ_Move_base):
         self.target_value = value
         value = self.set_position_with_scaling(value)
         axis = self.settings['multiaxes', 'axis']
-        self.controller.sep_polarizer_value(value.value(self.axis_unit), axis)
-        self.emit_status(ThreadCommand('Update_Status', ['Moved polarizer %s' % axis]))
+        self.controller.set_polarizer_value(value.value(self.axis_unit), axis)
+        self.emit_status(ThreadCommand('Update_Status',
+                                       ['Moved polarizer %s' % axis]))
 
     def move_rel(self, value: DataActuator):
         """ Move the actuator to the relative target actuator value defined
@@ -108,7 +109,8 @@ class DAQ_Move_MockPolarizer(DAQ_Move_base):
         value = self.set_position_relative_with_scaling(value)
 
         self.controller.delay_line.move_at(axis, value.value(self.axis_unit))
-        self.emit_status(ThreadCommand('Update_Status', ['Moved polarizer %s' % axis]))
+        self.emit_status(ThreadCommand('Update_Status',
+                                       ['Moved polarizer %s' % axis]))
 
     def move_home(self):
         """Call the reference method of the controller"""
