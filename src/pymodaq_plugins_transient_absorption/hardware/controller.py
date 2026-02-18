@@ -158,20 +158,43 @@ class MockTACamera:
 
 class MockTAController:
 
+    polarizer_names = ['Polarizer', 'Lambda/2']
+    shutter_names = ['Excitation', 'Probe']
+
     def __init__(self):
         self.camera = MockTACamera()
         self.delay_line = MockDelayLine()
-        self.shutters = [MockShutter() for _ in range(2)]
-        self.polarizers = [MockPolarizer() for _ in range(2)]
+        self.shutters = { name: MockShutter() for name in self.shutter_names }
+        self.polarizers = \
+            { name: MockPolarizer() for name in self.polarizer_names }
         self.with_scatter = False
         self._thread = None
 
+    def get_polarizer_value(self, axis):
+        return self.polarizers[axis].get_value()
+
+    def set_polarizer_value(self, axis, value):
+        self.polarizers[axis].set_value(value)
+
+    def get_delay_value(self):
+        return self.delay_line.get_value()
+
+    def set_delay_value(selfvalue):
+        self.delay_line.set_value(value)
+
+    def get_shutter_value(self, shutter):
+        return self.shutters[axis].get_value()
+
+    def set_shutter_value(self, shutter, value):
+        self.shutters[axis].set_value(value)
+
     def grab_spectrum(self):
-        return self.camera.calculate_block(self.delay_line.get_value(),
-                                           self.polarizers[0].get_value(),
-                                           self.shutters[0].get_value() > 0,
-                                           self.shutters[1].get_value() > 0,
-                                           self.with_scatter)
+        return self.camera\
+            .calculate_block(self.delay_line.get_value(),
+                             self.polarizers['Polarizer'].get_value(),
+                             self.shutters['Excitation'].get_value() > 0,
+                             self.shutters['Probe'].get_value() > 0,
+                             self.with_scatter)
 
     def start_continuous_grabbing(self, callback):
         if self._thread is None:
