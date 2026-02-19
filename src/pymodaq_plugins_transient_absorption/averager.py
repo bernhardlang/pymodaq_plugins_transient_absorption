@@ -115,9 +115,7 @@ class Averager(AveragerData):
 class AveragerFactory:
 
     @classmethod
-    def make(cls, condition, n_stride, offset, dark_averager=None):
-        return Averager(condition.start, condition.end, stride, offset,
+    def make(cls, condition, stride, offset=0):
+        return Averager(condition.pixel_from, condition.pixel_to, stride, offset,
                         condition.min_samples, condition.limit_diff_rms,
-                        condition.limit_diff_mean, condition.max_attempts,
-                        dark=dark_averager.mean)
-        
+                        condition.limit_diff_mean, condition.max_attempts)

@@ -1,6 +1,7 @@
 import numpy as np
 from dataclasses import dataclass
 from PyQt5.QtCore import QObject, pyqtSignal
+from pymodaq.utils.data import DataFromPlugins, DataToExport, Axis
 from pymodaq_plugins_transient_absorption.averager import Averager, \
     AveragerFactory
 
@@ -10,20 +11,23 @@ class StatisticsCondition:
 
     pixel_from: int
     pixel_to: int
-    limit_diff_rms: float = None
-    limit_diff_mean: float = None
+    limit_diff_rms: float = 0
+    limit_diff_mean: float = 0
+    min_samples: int = 0
     max_attempts: int = 0
 
 
 @dataclass
 class TACondition:
 
+    limit_diff_rms_dark: float
     limit_diff_mean_dark: float
-    limit_diff_mean_dark: float
-    max_dark: int
+    min_dark: int
+    max_dark_attempts: int
     limit_diff_rms_white: float
     limit_diff_mean_white: float
-    max_white: int
+    min_white: int
+    max_white_attempts: int
 
 
 class TAProcessor(QObject):
@@ -40,21 +44,35 @@ class TAProcessor(QObject):
 
     def set_up(self, n_pix, cond: TACondition, statistic_ranges: []):
         self.n_pix = n_pix
+        data_x_axis = np.linspace(0, self.n_pix - 1, self.n_pix)
+        self.x_axis = Axis(data=data_x_axis, label='pixels', units='', index=0)
         self.dark_condition = \
             StatisticsCondition(0, n_pix, cond.limit_diff_rms_dark,
                                 cond.limit_diff_mean_dark,
-                                cond.max_dark)
+                                cond.min_dark, cond.max_dark_attempts)
         self.whitelight_conditions = \
             [StatisticsCondition(pix[0], pix[1], cond.limit_diff_rms_dark,
-                                 cond.limit_diff_mean_dark, cond.max_dark)
+                                 cond.limit_diff_mean_dark, cond.min_white,
+                                 cond.max_white_attempts)
              for pix in statistic_ranges]
         self.whitelight_conditions.append(StatisticsCondition(0, n_pix))
 
-        self.dark_averager = \
+        self.dark_averagers = \
             [AveragerFactory.make(self.dark_condition, 2 * n_pix),
              AveragerFactory.make(self.dark_condition, 2 * n_pix, n_pix)]
+        self.whitelight_averagers = []
         self.ta_averager = AveragerFactory.make(StatisticsCondition(0, n_pix), 0)
         self.data_processing_mode = self.DARK
+
+    def reset(self):
+        for av in self.dark_averagers + self.whitelight_averagers:
+            av.reset()
+        self.data_processing_mode = self.DARK
+        self.clear_accumulation()
+
+    def clear_accumulation(self):
+        self.ta_averager.reset()
+        self.ta_whitelight_averager.reset()
 
     def process_data(self, raw_data):
         current = None
@@ -62,13 +80,10 @@ class TAProcessor(QObject):
             result, dte = self.process_dark(raw_data)
             if result == Averager.SUCCESS:
                 self.whitelight_averagers = \
-                    [self.averager_factory\
-                     .make_averager(cond, 2 * self.n_pix, self.n_pix,
-                                    self.dark_averager[1])
-                     for cond in self.statistic_conditions]
-                av.dark = self.dark_averager[1].mean
-            self.dark_signal = self.dark_averager[0].mean
-            self.dark_reference = self.dark_averager[1].mean
+                    [AveragerFactory.make(cond, 2 * self.n_pix, self.n_pix)
+                     for cond in self.whitelight_conditions]
+            self.dark_signal = self.dark_averagers[0].mean
+            self.dark_reference = self.dark_averagers[1].mean
 
         elif self.data_processing_mode == self.WHITELIGHT:
             result, dte = self.process_whitelight(raw_data)
@@ -78,43 +93,45 @@ class TAProcessor(QObject):
                 self.rms_whitelight = \
                     [av.rms for av in self.whitelight_averagers[:-2]]
                 self.ta_whitelight_averager = \
-                    self.averager_factory\
-                     .make_averager(self.statistic_conditions[-1],
-                                    2 * self.n_pix, self.n_pix)
+                    AveragerFactory.make(self.whitelight_conditions[-1],
+                                         2 * self.n_pix, self.n_pix)
                 self.ta_averager = \
-                    self.averager_factory\
-                     .make_averager(self.ta_cond, 2 * self.n_pix, self.n_pix)
+                    AveragerFactory.make(self.ta_cond, 2 * self.n_pix,
+                                         self.n_pix)
 
         elif self.data_processing_mode == self.TA:
             result, dte = self.process_ta(raw_data)
-        else:
+
+        else: # IDLE, do nothing
             return None, False
 
         if result != Averager.CONTINUE:
             self.data_processing_mode = self.IDLE
 
         if result == Averager.SUCCESS:
-            return dte, False
+            self.acquisition_done.emit()
+            return dte, True # store
 
         if result == Averager.FAIL:
             self.acquisition_fail.emit()
-        return dte, True
+
+        return dte, False # display only
 
     def process_dark(self, raw_data):
-        result = Averager.SUCESSS
+        result = Averager.SUCCESS
         for av in self.dark_averagers:
             result = max(result, av.take_data(raw_data))
 
         mean = [DataFromPlugins(name='dark camera %d' % i, data=[av.mean],
                                 dim='Data1D', labels=['dark camera %d' % i],
                                 axes=[self.x_axis])
-                for i,av in self.dark_averagers]
+                for i,av in enumerate(self.dark_averagers)]
         rms = [DataFromPlugins(name='rms dark camera %d' % i, data=[av.rms],
                                dim='Data1D', labels=['rms dark camera %d' % i],
                                axes=[self.x_axis])
-               for i,av in self.dark_averagers]
+               for i,av in enumerate(self.dark_averagers)]
 
-        dte = DataToExport(name='dark', data=[mean, rms])
+        dte = DataToExport(name='dark', data=mean + rms)
         return result, dte
 
     def subtrackt_dark(self, raw_data):
@@ -134,11 +151,11 @@ class TAProcessor(QObject):
         mean = [DataFromPlugins(name='dark camera %d' % i, data=[av.mean],
                                 dim='Data1D', labels=['dark camera %d' % i],
                                 axes=[self.x_axis])
-                for i,av in self.whitelight_averagers[-2:]]
+                for i,av in enumerate(self.whitelight_averagers[-2:])]
         rms = [DataFromPlugins(name='rms dark camera %d' % i, data=[av.rms],
                                dim='Data1D', labels=['rms dark camera %d' % i],
                                axes=[self.x_axis])
-               for i,av in self.whitelight_averagers[-2:]]
+               for i,av in enumerate(self.whitelight_averagers[-2:])]
 
         dte = DataToExport(name='whitelight', data=[mean, rms])
         return result, dte
@@ -149,6 +166,7 @@ class TAProcessor(QObject):
     def process_ta(self, raw_data):
         n_pic = self.n_pix
         ta = None
+        src = 0
         while src < len(raw_data):
             data = self.subtrackt_dark(raw_data[src:src + self.item_size])
             self.ta_whitelight_averager.take_data(data)
