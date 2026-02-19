@@ -1,5 +1,3 @@
-import numpy as np
-from PyQt5.QtCore import pqtSignal
 from enum import Enum
 from pymodaq_utils.utils import ThreadCommand
 from pymodaq_data.data import DataToExport, Axis
@@ -9,6 +7,10 @@ from pymodaq.control_modules.viewer_utility_classes import DAQ_Viewer_base, \
 from pymodaq.utils.data import DataFromPlugins
 from pymodaq_plugins_transient_absorption.hardware.controller \
     import MockTAController
+from pymodaq_plugins_transient_absorption.daq_viewer_plugins.plugins_1D \
+    .daq_1Dviewer_MockTACamera import DAQ_1DViewer_MockTACamera
+from pymodaq_plugins_transient_absorption.ta_processor import TAProcessor, \
+    StatisticsCondition, TACondition
 
 
 class DAQ_1DViewer_MockTACameraMixer(DAQ_1DViewer_MockTACamera):
@@ -16,95 +18,58 @@ class DAQ_1DViewer_MockTACameraMixer(DAQ_1DViewer_MockTACamera):
     
     """
 
-    acquiition_done = pyqtSignal()
-    acquiition_failed = pyqtSignal()
-
     IDLE       = 0
     DARK       = 1
     WHITELIGHT = 2
     TA         = 3
-    
+
+    params = DAQ_1DViewer_MockTACamera.params + [
+        { 'title': 'Statistic pixels', 'name': 'statistics', 'type': 'str' },
+        { 'title': 'Max. difference rms dark', 'name': 'limit_diff_rms_dark',
+          'type': 'float', 'min': 0, 'value': 3 },
+        { 'title': 'Max. difference mean dark', 'name': 'limit_diff_mean_dark',
+          'type': 'float', 'min': 0, 'value': 3 },
+        { 'title': 'Max. attempts dark', 'name': 'max_dark',
+          'type': 'int', 'min': 1, 'value': 100 },
+        { 'title': 'Max. difference rms whitelight',
+          'name': 'limit_diff_rms_white', 'type': 'float', 'min': 0,
+          'value': 3 },
+        { 'title': 'Max. difference mean whitleight',
+          'name': 'limit_diff_mean_white', 'type': 'float', 'min': 0,
+          'value': 3 },
+        { 'title': 'Max. attempts whitelight', 'name': 'max_white',
+          'type': 'int', 'min': 1, 'value': 10 },
+        ]
+
+    def ini_attributes(self):
+        super().ini_attributes()
+        self.ta_processor = TAProcessor()
+
+    def init_data(self):
+        ta_condition = \
+            TACondition(self.settings['limit_diff_mean_dark'],
+                        self.settings['limit_diff_mean_dark'],
+                        self.settings['max_dark'],
+                        self.settings['limit_diff_rms_white'],
+                        self.settings['limit_diff_mean_white'],
+                        self.settings['max_white'])
+        statistics_pixel = []
+        statistics_pixels = \
+            [[int(pix) for pix in item.split('-')]
+             for item in self.settings['statistics'].split(',')]
+
+        self.ta_processor.set_up(self.n_pixels, ta_condition, statistics_pixels)
+
     def single_callback(self, raw_data):
-        current = None
-        if self.data_processing_mode == self.DARK:
-            result, mean, rms = self.process_dark(raw_data)
-            if result == Averager.SUCCESS:
-                self.whitelight_averagers
-                = [self.averager_factory.make_averager(cond, dark_averager[1])
-                   for cond in self.statistic_conditions]
-                    av.dark = self.dark_averager[1].mean
-            self.dark_signal = self.dark_averager[0].mean
-            self.dark_reference = self.dark_averager[1].mean
+        dte, display = self.ta_processor.process_data(raw_data)
 
-        elif self.data_processing_mode == self.WHITELIGHT:
-            result, mean, rms = self.process_whitelight(raw_data)
-            if result == Averager.SUCCESS:
-                self.whitelight = [av.mean for av in self.whitelight_averagers[:-2]]
-                self.rms_whitelight = [av.rms for av in self.whitelight_averagers[:-2]]
+        if dte is None:
+            return
 
-        elif self.data_processing_mode == self.TA:
-            result, mean, rms, current = self.process_ta(raw_data)
+        if display:
+            self.dte_signal_temp.emit(dte)
         else:
-            return
-
-        if result != Averager.CONTINUE_
-            self.data_processing_mode = self.IDLE
-
-        if result == Averager.SUCESS:
-            self.dte_signal.emit(DataToExport(name='mock-ta', data=[mean, rms)))
-            self.acquisition_done.emit()
-            return
-
-        self.dte_signal_temp.emit(DataToExport(name='mock-ta', data=[data, rms]))
-        if result == Averager.FAIL:
-            self.acquisition_fail.emit()
-
-    def process_dark(self, raw_data):
-        result = Averager.SUCESSS
-        for av in self.dark_averagers:
-            result = max(result, av.take_data(raw_data))
-
-        mean = [DataFromPlugins(name='dark camera %d' % i, data=[av.mean],
-                                dim='Data1D', labels=['dark camera %d' % i],
-                                axes=[self.x_axis])
-                for i,av in self.dark_averagers]
-        rms = [DataFromPlugins(name='rms dark camera %d' % i, data=[av.rms],
-                               dim='Data1D', labels=['rms dark camera %d' % i],
-                               axes=[self.x_axis])
-               for i,av in self.dark_averagers]
-
-        return result, mean, rms
-        
-    def process_whitelight(self, raw_data):
-        result = Averager.SUCESSS
-        for av in self.whitelight_averagers:
-            result = max(result, av.take_data(raw_data))
-
-        mean = [DataFromPlugins(name='dark camera %d' % i, data=[av.mean],
-                                dim='Data1D', labels=['dark camera %d' % i],
-                                axes=[self.x_axis])
-                for i,av in self.whitelight_averagers[-2:]
-        rms = [DataFromPlugins(name='rms dark camera %d' % i, data=[av.rms],
-                               dim='Data1D', labels=['rms dark camera %d' % i],
-                               axes=[self.x_axis])
-               for i,av in self.whitelight_averagers[-2:]
-
-        return result, mean, rms
-
-    def process_ta(self, raw_data):
-        pass
-
-
-    def not_yet(self):
-        data_from = 2 * self.display_scan * self.n_pix
-        data = [DataFromPlugins(name='camera %d' % i,
-                                data=raw_data[data_from + i * self.n_pix
-                                              :data_from + (i + 1) * self.n_pix],
-                                dim='Data1D', labels=['camera %d' % i],
-                                axes=[self.x_axis])
-                for i in range(2)]
-        self.dte_signal_temp.emit(DataToExport(name='eslscpcie', data=data))
-
+            self.dte_signal.emit(dte)
 
 
 if __name__ == '__main__':

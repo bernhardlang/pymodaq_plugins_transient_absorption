@@ -89,22 +89,22 @@ class DAQ_1DViewer_MockTACamera(DAQ_Viewer_base):
         kwargs: dict
             others optionals arguments
         """
+        if self.settings['displayed_scan'] < 0:
+            callback = self.average_callback
+        else:
+            callback = self.single_callback
+            self.display_scan = self.settings['displayed_scan']
+
         if 'live' in kwargs:
             if kwargs['live']:
                 self.live = True
-                self.acquisition_counter = 0
-                if self.settings['displayed_scan'] < 0:
-                    callback = self.average_callback
-                else:
-                    callback = self.single_callback
-                    self.display_scan = self.settings['displayed_scan']
                 self.controller.start_continuous_grabbing(callback)
             else:
                 self.live = False
                 self.controller.stop_continuous_grabbing()
             return
 
-        self.controller.grab(self.callback)
+        self.controller.grab(callback)
 
     def single_callback(self, raw_data):
         data_from = 2 * self.display_scan * self.n_pix
