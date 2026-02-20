@@ -42,10 +42,12 @@ class TAProcessor(QObject):
     WHITELIGHT = 2
     TA         = 3
 
-    def set_up(self, n_pix, cond: TACondition, statistic_ranges: []):
+    def set_up(self, n_pix, cond: TACondition, statistic_ranges: [], with_scatter: bool):
         self.n_pix = n_pix
         data_x_axis = np.linspace(0, self.n_pix - 1, self.n_pix)
         self.x_axis = Axis(data=data_x_axis, label='pixels', units='', index=0)
+        self.with_scatter = with_scatter
+        self.item_size = self.n_pix * (8 if with_scatter else 4)
         self.dark_condition = \
             StatisticsCondition(0, n_pix, cond.limit_diff_rms_dark,
                                 cond.limit_diff_mean_dark,
@@ -72,7 +74,8 @@ class TAProcessor(QObject):
 
     def clear_accumulation(self):
         self.ta_averager.reset()
-        self.ta_whitelight_averager.reset()
+        if len(self.whitelight_averagers):
+            self.whitelight_averagers[-1].reset()
 
     def process_data(self, raw_data):
         current = None
@@ -95,9 +98,6 @@ class TAProcessor(QObject):
                 self.ta_whitelight_averager = \
                     AveragerFactory.make(self.whitelight_conditions[-1],
                                          2 * self.n_pix, self.n_pix)
-                self.ta_averager = \
-                    AveragerFactory.make(self.ta_cond, 2 * self.n_pix,
-                                         self.n_pix)
 
         elif self.data_processing_mode == self.TA:
             result, dte = self.process_ta(raw_data)
@@ -113,7 +113,7 @@ class TAProcessor(QObject):
             return dte, True # store
 
         if result == Averager.FAIL:
-            self.acquisition_fail.emit()
+            self.acquisition_failed.emit()
 
         return dte, False # display only
 
@@ -135,18 +135,31 @@ class TAProcessor(QObject):
         return result, dte
 
     def subtrackt_dark(self, raw_data):
-        pass
+        data_size = len(raw_data)
+        data = np.empty(data_size)
+        start = 0
+        end = self.n_pix
+        while start < data_size:
+            data[start:end] = raw_data[start:end] - self.dark_signal
+            start += self.n_pix
+            end += self.n_pix
+            data[start:end] = raw_data[start:end] - self.dark_reference
+            start += self.n_pix
+            end += self.n_pix
+        return data
 
     def process_whitelight(self, raw_data):
         src = 0
         while src < len(raw_data):
             dark_subtracted = \
                 self.subtrackt_dark(raw_data[src:src + self.item_size])
-            result = Averager.SUCESSS
-            for av in self.whitelight_averagers:
+            result = Averager.SUCCESS
+            for av in self.whitelight_averagers[:-1]:
                 result = max(result, av.take_data(dark_subtracted))
-            if result == Averager.SUCESSS:
+            self.whitelight_averagers[-1].take_data(dark_subtracted)
+            if result != Averager.CONTINUE:
                 break
+            src += self.item_size
 
         mean = [DataFromPlugins(name='dark camera %d' % i, data=[av.mean],
                                 dim='Data1D', labels=['dark camera %d' % i],
@@ -157,7 +170,7 @@ class TAProcessor(QObject):
                                axes=[self.x_axis])
                for i,av in enumerate(self.whitelight_averagers[-2:])]
 
-        dte = DataToExport(name='whitelight', data=[mean, rms])
+        dte = DataToExport(name='whitelight', data=mean + rms)
         return result, dte
 
     def check_whitelight(self, data):
@@ -170,7 +183,7 @@ class TAProcessor(QObject):
         while src < len(raw_data):
             data = self.subtrackt_dark(raw_data[src:src + self.item_size])
             self.ta_whitelight_averager.take_data(data)
-            if self.check_whitelight(dark_subtracted):
+            if self.check_whitelight(data):
                 if self.with_scatter:
                     data[:n_pix] -= data[4*n_pix:5*n_pix]
                 counter = data[:n_pix] * data[3*n_pix:4*n_pix]
@@ -180,6 +193,7 @@ class TAProcessor(QObject):
                 result = self.ta_averager.take_data(ta)
                 if result == Averager.SUCCESS:
                     break
+            src += self.item_size
 
         white = DataFromPlugins(name='whitelight',
                                 data=[self.ta_whitleight_averager.mean],
