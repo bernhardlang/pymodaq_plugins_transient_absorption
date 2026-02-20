@@ -19,7 +19,8 @@ def make_processor(n_pix):
     ta_condition = \
         TACondition(limit_diff_rms_dark=1, limit_diff_mean_dark=1, min_dark=40,
                     max_dark_attempts=30, limit_diff_rms_white=1,
-                    limit_diff_mean_white=1, min_white=20, max_white_attempts=10)
+                    limit_diff_mean_white=1, min_white=20, max_white_attempts=10,
+                    limit_diff_ta=3, max_ta=10)
     ranges = [[2, 4], [6, 8]]
 
     ta_processor.set_up(n_pix, ta_condition, ranges, False)
@@ -33,7 +34,7 @@ def make_processor(n_pix):
     return ta_processor
 
     
-def make_data(n_data, n_pix, signal=0, reference=0, ta=0, deviation=0, offset=0):
+def make_data(n_data, n_pix, signal=0, reference=0, ta=0, offset=0):
     data = np.empty(n_data)
     dest = 0
     while dest < n_data:
@@ -74,7 +75,7 @@ def test_set_up():
     assert hasattr(ta_processor, 'ta_averager')
     assert type(ta_processor.ta_averager) == Averager
     assert asdict(ta_processor.ta_averager) == {
-        'start': 0, 'end': n_pix, 'stride': 0, 'offset': 0, 'min_samples': 0,
+        'start': 0, 'end': n_pix, 'stride': n_pix, 'offset': 0, 'min_samples': 0,
         'limit_diff_rms': 0, 'limit_diff_mean': 0, 'max_attempts': 0
         }
 
@@ -254,15 +255,57 @@ def test_white_fail_then_pass():
 
 
 def test_accumulation():
-    assert False
+    ta_processor, n_pix = test_white_pass()
+    global success_count
+    success_count = 0
+    n_ta = 10
+    ta_data = \
+        make_data(n_pix * 2 * n_ta, n_pix, signal=100, reference=110, ta=30)
+    dte, store = ta_processor.process_data(ta_data)
+    assert dte is None
+    assert not store
+    assert fail_count == 0
+    assert success_count == 0
+    ta_processor.data_processing_mode = TAProcessor.TA
+    dte, store = ta_processor.process_data(ta_data)
+    assert dte is not None
+    assert not store
+    assert fail_count == 0
+    assert success_count == 0
+    assert ta_processor.ta_averager.samples == 5
 
 
 def test_rejection():
-    assert False
-
-
-def test_success():
-    assert False
+    ta_processor, n_pix = test_white_pass()
+    global success_count
+    success_count = 0
+    n_ta = 10
+    ta_data = make_data(n_pix * 4, n_pix, signal=100, reference=210, ta=30)
+    ta_processor.data_processing_mode = TAProcessor.TA
+    dte, store = ta_processor.process_data(ta_data)
+    dte, store = ta_processor.process_data(ta_data)
+    assert dte is not None
+    assert not store
+    assert fail_count == 0
+    assert success_count == 0
+    assert ta_processor.ta_averager.samples == 0
+    assert len(dte) == 1
+    ta_data = make_data(n_pix * 4, n_pix, signal=100, reference=110, ta=30)
+    dte, store = ta_processor.process_data(ta_data)
+    assert dte is not None
+    assert not store
+    assert fail_count == 0
+    assert success_count == 0
+    assert ta_processor.ta_averager.samples == 1
+    assert len(dte) == 1
+    ta_data = make_data(n_pix * 4, n_pix, signal=100, reference=110, ta=30)
+    dte, store = ta_processor.process_data(ta_data)
+    assert dte is not None
+    assert not store
+    assert fail_count == 0
+    assert success_count == 0
+    assert ta_processor.ta_averager.samples == 2
+    assert len(dte) == 4
 
 
 if __name__ == '__main__':
@@ -275,4 +318,3 @@ if __name__ == '__main__':
     test_white_fail_then_pass()
     test_accumulation()
     test_rejection()
-    test_success()

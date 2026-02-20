@@ -24,7 +24,7 @@ class Averager(AveragerData):
     CONTINUE = 1
     FAIL     = 2
 
-    def _init(self):
+    def _init(self): # called from AveragerData.__post_init__
         self.n_pix = self.end - self.start
         self.sum_values = np.zeros(self.n_pix)
         self.sum_squared_values = np.zeros(self.n_pix)
@@ -48,7 +48,7 @@ class Averager(AveragerData):
     @classmethod
     def average(cls, sum_values, sum_squared_values, samples):
         if samples < 2:
-            raise RuntimeError("Averager: need at lest two samples")
+            raise RuntimeError("Averager: need at least two samples")
         return sum_values / samples, \
             np.sqrt((samples * sum_squared_values - sum_values**2) \
                           / (samples * (samples - 1)))
@@ -119,3 +119,4 @@ class AveragerFactory:
         return Averager(condition.pixel_from, condition.pixel_to, stride, offset,
                         condition.min_samples, condition.limit_diff_rms,
                         condition.limit_diff_mean, condition.max_attempts)
+        
