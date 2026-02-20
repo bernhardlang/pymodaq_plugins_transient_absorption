@@ -107,18 +107,22 @@ def test_dark_fail():
         dte, store = ta_processor.process_data(dark_data1)
         assert not store
         assert fail_count == 0
+        assert success_count == 0
         assert ta_processor.data_processing_mode == TAProcessor.DARK
         dte, store = ta_processor.process_data(dark_data2)
         assert not store
         assert fail_count == 0
+        assert success_count == 0
         assert ta_processor.data_processing_mode == TAProcessor.DARK
     dte, store = ta_processor.process_data(dark_data1)
     assert not store
     assert fail_count == 0
+    assert success_count == 0
     dte, store = ta_processor.process_data(dark_data2)
     assert not store
     assert ta_processor.data_processing_mode == TAProcessor.IDLE
     assert fail_count == 1
+    assert success_count == 0
 
     ta_processor.reset()
     for av in ta_processor.dark_averagers:
@@ -143,6 +147,8 @@ def test_dark_fail_then_pass():
     assert not store
     dte, store = ta_processor.process_data(dark_data1)
     assert store
+    assert success_count == 1
+    assert fail_count == 0
 
 
 def test_white_pass():
@@ -160,6 +166,8 @@ def test_white_pass():
     assert not store
     dte, store = ta_processor.process_data(white_data)
     assert store
+    assert success_count == 1
+    assert fail_count == 0
     for av in ta_processor.whitelight_averagers[:-1]:
         assert av.attempts == 1
         assert av.samples == 20
@@ -179,56 +187,70 @@ def test_white_fail():
     white_data2 = \
         make_data(n_pix * 2 * n_white, n_pix, signal=100, reference=110,
                   offset = 10)
-    for i in range(4):
+    for i in range(5):
         dte, store = ta_processor.process_data(white_data1)
         assert not store
+        assert fail_count == 0
+        assert success_count == 0
         ta_processor.data_processing_mode = TAProcessor.WHITELIGHT
         dte, store = ta_processor.process_data(white_data2)
         assert not store
+        assert fail_count == 0
+        assert success_count == 0
     dte, store = ta_processor.process_data(white_data1)
     assert not store
-    assert fail_count == 0
-    dte, store = ta_processor.process_data(white_data2)
-    assert not store
-    assert ta_processor.data_processing_mode == TAProcessor.IDLE
     assert fail_count == 1
+    assert success_count == 0
+    assert ta_processor.data_processing_mode == TAProcessor.IDLE
 
-    for av in ta_processor.whitelight_averager[:-1]:
-        assert av.attempts == 1
-        assert av.samples == 0
-    assert ta_processor.whitelight_averager[-1].attempts == 0
-    assert ta_processor.whitelight_averager[-1].samples == 0
+    for av in ta_processor.whitelight_averagers[:-1]:
+        assert av.attempts == 10
+        assert av.samples == 20
+    assert ta_processor.whitelight_averagers[-1].attempts == 0
+    assert ta_processor.whitelight_averagers[-1].samples == 10 * 20
 
 
-def test_white_then_pass():
+def test_white_fail_then_pass():
     ta_processor, n_pix = test_dark_pass()
     n_white = 20
     global success_count
     success_count = 0
     white_data1 = \
         make_data(n_pix * 2 * n_white, n_pix, signal=100, reference=110)
-    white_data1 = \
+    white_data2 = \
         make_data(n_pix * 2 * n_white, n_pix, signal=100, reference=110,
                   offset = 10)
-    for i in range(10):
-        dte, store = ta_processor.process_data(white_data1)
-        assert not store
-        ta_processor.data_processing_mode = TAProcessor.WHITELIGHT
-        dte, store = ta_processor.process_data(white_data2)
-        assert not store
-    dte, store = ta_processor.process_data(dark_data1)
+    dte, store = ta_processor.process_data(white_data1)
+    assert dte is None
     assert not store
     assert fail_count == 0
-    dte, store = ta_processor.process_data(dark_data2)
+    assert success_count == 0
+    ta_processor.data_processing_mode = TAProcessor.WHITELIGHT
+    for i in range(4):
+        dte, store = ta_processor.process_data(white_data1)
+        assert dte is not None
+        assert not store
+        assert fail_count == 0
+        assert success_count == 0
+        dte, store = ta_processor.process_data(white_data2)
+        assert dte is not None
+        assert not store
+        assert fail_count == 0
+        assert success_count == 0
+    dte, store = ta_processor.process_data(white_data1)
     assert not store
+    assert fail_count == 0
+    dte, store = ta_processor.process_data(white_data1)
+    assert store
+    assert fail_count == 0
+    assert success_count == 1
     assert ta_processor.data_processing_mode == TAProcessor.IDLE
-    assert fail_count == 1
 
-    for av in ta_processor.whitelight_averager[:-1]:
-        assert av.attempts == 1
-        assert av.samples == 0
-    assert ta_processor.whitelight_averager[-1].attempts == 0
-    assert ta_processor.whitelight_averager[-1].samples == 0
+    for av in ta_processor.whitelight_averagers[:-1]:
+        assert av.attempts == 9
+        assert av.samples == 20
+    assert ta_processor.whitelight_averagers[-1].attempts == 0
+    assert ta_processor.whitelight_averagers[-1].samples == 10 * 20
 
 
 def test_accumulation():
