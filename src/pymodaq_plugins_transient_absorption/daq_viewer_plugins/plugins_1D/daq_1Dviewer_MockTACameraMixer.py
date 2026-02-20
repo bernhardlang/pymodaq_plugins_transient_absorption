@@ -23,6 +23,8 @@ class DAQ_1DViewer_MockTACameraMixer(DAQ_1DViewer_MockTACamera):
     WHITELIGHT = 2
     TA         = 3
 
+    mode_names = ['Idle', 'Dark', 'Whitelight', 'TA']
+
     params = DAQ_1DViewer_MockTACamera.params + [
         { 'title': 'Statistic pixels', 'name': 'statistics', 'type': 'str' },
         { 'title': 'Max. difference rms dark', 'name': 'limit_diff_rms_dark',
@@ -39,11 +41,23 @@ class DAQ_1DViewer_MockTACameraMixer(DAQ_1DViewer_MockTACamera):
           'value': 3 },
         { 'title': 'Max. attempts whitelight', 'name': 'max_white',
           'type': 'int', 'min': 1, 'value': 10 },
+        { 'title': 'Data processing mode', 'name': 'processing_mode',
+          'type': 'list', 'limits': mode_names, 'value': 'Dark' },
         ]
 
     def ini_attributes(self):
         super().ini_attributes()
         self.ta_processor = TAProcessor()
+
+    def commit_settings(self, param: Parameter):
+        if param('name') == 'processing_mode':
+            try:
+                self.ta_processor.data_processing_mode = \
+                    self.mode_names.index(param.value())
+            except:
+                pass
+        else:
+            super().commit_settings(param)
 
     def init_data(self):
         ta_condition = \
